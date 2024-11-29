@@ -1,108 +1,183 @@
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
+import calendar
 
-# Função para carregar os dados com tratamento de encoding e separação correta de colunas
 @st.cache_data
 def carregar_dados():
     try:
-        # Lê o CSV com o encoding correto e trata as aspas e os delimitadores
         dados = pd.read_csv(
-            "dados/dados_consolidados.csv", 
-            delimiter=",",  # Use vírgula como delimitador
-            encoding="utf-8",  # Alterando para utf-8 para lidar com caracteres especiais
-            quotechar='"',  # Tratando as aspas corretamente
-            skipinitialspace=True  # Ignora espaços extras após delimitadores
+            "dados/dados_final.csv",
+            delimiter=",",
+            encoding="utf-8",
+            quotechar='"',
+            skipinitialspace=True
         )
         return dados
     except pd.errors.ParserError as e:
         st.error(f"Erro ao carregar os dados: {e}")
-        return pd.DataFrame()  # Retorna um DataFrame vazio em caso de erro
+        return pd.DataFrame()
 
-# Função para exibir o DataFrame de forma mais limpa
-def exibir_dados(dados):
-    if not dados.empty:
-        st.dataframe(dados)  # Exibe os dados de forma interativa
+def analise_existente(dados_filtrados):
+    st.header("Análises Básicas")
+    
+    # Distribuição por dia da semana
+    acidentes_por_dia = dados_filtrados['dia_semana'].value_counts().sort_index()
+    acidentes_por_dia_df = acidentes_por_dia.reset_index()
+    acidentes_por_dia_df.columns = ['Dia da Semana', 'Número de Acidentes']
+    
+    fig_dia_semana = px.bar(acidentes_por_dia_df, x='Dia da Semana', y='Número de Acidentes',
+                           title="Distribuição de Acidentes por Dia da Semana")
+    st.plotly_chart(fig_dia_semana)
+    
+    # Distribuição por tipo de acidente
+    acidentes_por_tipo = dados_filtrados['tipo_acidente'].value_counts().sort_values(ascending=False)
+    acidentes_por_tipo_df = acidentes_por_tipo.reset_index()
+    acidentes_por_tipo_df.columns = ['Tipo de Acidente', 'Número de Acidentes']
+    
+    fig_tipo_acidente = px.bar(acidentes_por_tipo_df, x='Tipo de Acidente', y='Número de Acidentes',
+                              title="Distribuição por Tipo de Acidente")
+    st.plotly_chart(fig_tipo_acidente)
+    
+    # Distribuição por causa
+    acidentes_por_causa = dados_filtrados['causa_acidente'].value_counts().sort_values(ascending=False)
+    acidentes_por_causa_df = acidentes_por_causa.reset_index()
+    acidentes_por_causa_df.columns = ['Causa do Acidente', 'Número de Acidentes']
+    
+    fig_causa_acidente = px.bar(acidentes_por_causa_df, x='Causa do Acidente', y='Número de Acidentes',
+                               title="Distribuição por Causa")
+    st.plotly_chart(fig_causa_acidente)
+    
+    # Distribuição por condição meteorológica
+    acidentes_por_condicao = dados_filtrados['condicao_metereologica'].value_counts()
+    acidentes_por_condicao_df = acidentes_por_condicao.reset_index()
+    acidentes_por_condicao_df.columns = ['Condição Meteorológica', 'Número de Acidentes']
+    
+    fig_condicao = px.bar(acidentes_por_condicao_df, x='Condição Meteorológica', y='Número de Acidentes',
+                         title="Distribuição por Condição Meteorológica")
+    st.plotly_chart(fig_condicao)
 
-# Carrega os dados
-dados = carregar_dados()
+def analise_mitigacao(dados_filtrados):
+    st.header("Análise para Mitigação de Acidentes")
+    
+    # Análise por período do dia
+    dados_filtrados['hora'] = dados_filtrados['horario'].str[:2].astype(int)
+    dados_filtrados['periodo'] = pd.cut(dados_filtrados['hora'],
+                                      bins=[0,6,12,18,24],
+                                      labels=['Madrugada','Manhã','Tarde','Noite'])
+    
+    acidentes_periodo = pd.crosstab(dados_filtrados['periodo'], 
+                                   dados_filtrados['classificacao_acidente'])
+    
+    fig_periodo = px.bar(acidentes_periodo, title="Acidentes por Período e Gravidade",
+                        labels={'value': 'Número de Acidentes', 'periodo': 'Período do Dia'})
+    st.plotly_chart(fig_periodo)
+    
+    # Fatores de risco combinados
+    st.subheader("Fatores de Risco Combinados")
+    risco_combinado = dados_filtrados.groupby(['fase_dia', 'condicao_metereologica', 'tipo_pista']).agg({
+        'id': 'count',
+        'mortos': 'sum',
+        'feridos': 'sum'
+    }).reset_index()
+    
+    risco_combinado['indice_risco'] = (risco_combinado['mortos']*3 + risco_combinado['feridos']) / risco_combinado['id']
+    top_riscos = risco_combinado.nlargest(10, 'indice_risco')
+    
+    st.write("Top 10 Combinações Mais Perigosas:")
+    st.dataframe(top_riscos[['fase_dia', 'condicao_metereologica', 'tipo_pista', 'indice_risco']])
+    
+    # Mapa de calor temporal
+    st.subheader("Distribuição Temporal dos Acidentes")
+    dados_filtrados['mes'] = pd.to_datetime(dados_filtrados['data_inversa']).dt.month
+    heatmap_data = dados_filtrados.pivot_table(
+        values='id',
+        index='hora',
+        columns='mes',
+        aggfunc='count',
+        fill_value=0
+    )
+    
+    fig_heatmap = px.imshow(heatmap_data,
+                           title="Mapa de Calor: Hora x Mês",
+                           labels=dict(x="Mês", y="Hora do Dia", color="Número de Acidentes"))
+    st.plotly_chart(fig_heatmap)
 
-# Sidebar para filtro de UF
-st.sidebar.title("Filtro de Análise por UF")
-uf_selecionada = st.sidebar.selectbox('Selecione o estado (UF)', dados['uf'].unique())
+def analise_avancada(dados_filtrados):
+    st.header("Análises Avançadas")
+    
+    # Distribuição de acidentes por BR
+    acidentes_por_br = dados_filtrados['br'].value_counts().reset_index()
+    acidentes_por_br.columns = ['BR', 'Número de Acidentes']
+    
+    fig_br = px.bar(acidentes_por_br, x='BR', y='Número de Acidentes',
+                    title="Distribuição de Acidentes por BR")
+    st.plotly_chart(fig_br)
+    
+    # Distribuição km por mortos, feridos leves, feridos graves, ilesos
+    ferimentos_por_km = dados_filtrados.groupby('km').agg({
+        'mortos': 'sum',
+        'feridos_leves': 'sum',
+        'feridos_graves': 'sum',
+        'ilesos': 'sum'
+    }).reset_index()
+    
+    fig_km = px.line(ferimentos_por_km, x='km', y=['mortos', 'feridos_leves', 'feridos_graves', 'ilesos'],
+                     title="Distribuição de Ferimentos por KM",
+                     labels={'value': 'Número de Pessoas', 'variable': 'Tipo de Ocorrência'})
+    st.plotly_chart(fig_km)
+    
+    # Distribuição delegacia por número de acidentes
+    acidentes_por_delegacia = dados_filtrados['delegacia'].value_counts().reset_index()
+    acidentes_por_delegacia.columns = ['Delegacia', 'Número de Acidentes']
+    
+    fig_delegacia = px.bar(acidentes_por_delegacia, x='Delegacia', y='Número de Acidentes',
+                           title="Distribuição de Acidentes por Delegacia")
+    st.plotly_chart(fig_delegacia)
+    
+    # Distribuição município por número de acidentes
+    acidentes_por_municipio = dados_filtrados['municipio'].value_counts().reset_index()
+    acidentes_por_municipio.columns = ['Município', 'Número de Acidentes']
+    
+    fig_municipio = px.bar(acidentes_por_municipio, x='Município', y='Número de Acidentes',
+                           title="Distribuição de Acidentes por Município")
+    st.plotly_chart(fig_municipio)
+    
+    # Distribuição veículos por número de acidentes
+    acidentes_por_veiculos = dados_filtrados.groupby('veiculos').size().reset_index(name='Número de Acidentes')
+    fig_veiculos = px.scatter(acidentes_por_veiculos, x='veiculos', y='Número de Acidentes',
+                               title="Distribuição de Veículos por Número de Acidentes")
+    st.plotly_chart(fig_veiculos)
 
-# Filtrando os dados com base na UF selecionada
-dados_filtrados = dados[dados['uf'] == uf_selecionada]
+def main():
+    st.title("Dashboard de Análise")
+    
+    dados = carregar_dados()
+    
+    # Filtros
+    st.sidebar.title("Filtros")
+    uf_selecionada = st.sidebar.selectbox('Estado (UF)', dados['uf'].unique())
+    
+    # Aplicar filtros
+    dados_filtrados = dados[dados['uf'] == uf_selecionada]
+    
+    # Métricas principais
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total de Acidentes", len(dados_filtrados))
+    with col2:
+        st.metric("Total de Mortos", dados_filtrados['mortos'].sum())
+    with col3:
+        st.metric("Total de Feridos Leves", dados_filtrados['feridos_leves'].sum())
+    with col4:
+        st.metric("Total de Feridos Graves", dados_filtrados['feridos_graves'].sum())
+    
+    # Chamar análises
+    analise_existente(dados_filtrados)
+    analise_mitigacao(dados_filtrados)
+    analise_avancada(dados_filtrados)
 
-# Exibe os dados filtrados
-st.title(f"Análise de Acidentes de Trânsito - UF: {uf_selecionada}")
-st.write(f"Analisando os dados de acidentes para o estado de {uf_selecionada}.")
-
-# Exibe os dados filtrados
-exibir_dados(dados_filtrados)
-
-# 1. Distribuição de Acidentes por Dia da Semana
-acidentes_por_dia = dados_filtrados['dia_semana'].value_counts().sort_index()
-
-# Convertendo a série para um DataFrame para facilitar a criação do gráfico
-acidentes_por_dia_df = acidentes_por_dia.reset_index()
-acidentes_por_dia_df.columns = ['Dia da Semana', 'Número de Acidentes']  # Renomeia as colunas para um formato mais amigável
-
-# Gráfico de barras com o número de acidentes por dia da semana
-fig_dia_semana = px.bar(acidentes_por_dia_df, x='Dia da Semana', y='Número de Acidentes',
-                        labels={'Dia da Semana': 'Dia da Semana', 'Número de Acidentes': 'Número de Acidentes'},
-                        title="Distribuição de Acidentes por Dia da Semana")
-st.plotly_chart(fig_dia_semana)
-
-# 2. Distribuição de Acidentes por Tipo de Acidente
-acidentes_por_tipo = dados_filtrados['tipo_acidente'].value_counts().sort_values(ascending=False)
-
-# Convertendo a série para um DataFrame
-acidentes_por_tipo_df = acidentes_por_tipo.reset_index()
-acidentes_por_tipo_df.columns = ['Tipo de Acidente', 'Número de Acidentes']
-
-# Gráfico de barras com o número de acidentes por tipo de acidente
-fig_tipo_acidente = px.bar(acidentes_por_tipo_df, x='Tipo de Acidente', y='Número de Acidentes',
-                           labels={'Tipo de Acidente': 'Tipo de Acidente', 'Número de Acidentes': 'Número de Acidentes'},
-                           title="Distribuição de Acidentes por Tipo de Acidente")
-st.plotly_chart(fig_tipo_acidente)
-
-# 3. Distribuição de Acidentes por Causa de Acidente
-acidentes_por_causa = dados_filtrados['causa_acidente'].value_counts().sort_values(ascending=False)
-
-# Convertendo a série para um DataFrame
-acidentes_por_causa_df = acidentes_por_causa.reset_index()
-acidentes_por_causa_df.columns = ['Causa do Acidente', 'Número de Acidentes']
-
-# Gráfico de barras com o número de acidentes por causa do acidente
-fig_causa_acidente = px.bar(acidentes_por_causa_df, x='Causa do Acidente', y='Número de Acidentes',
-                            labels={'Causa do Acidente': 'Causa do Acidente', 'Número de Acidentes': 'Número de Acidentes'},
-                            title="Distribuição de Acidentes por Causa")
-st.plotly_chart(fig_causa_acidente)
-
-# 4. Acidentes por Condição Meteorológica
-acidentes_por_condicao_meteorologica = dados_filtrados['condicao_metereologica'].value_counts().sort_values(ascending=False)
-
-# Convertendo a série para um DataFrame
-acidentes_por_condicao_df = acidentes_por_condicao_meteorologica.reset_index()
-acidentes_por_condicao_df.columns = ['Condição Meteorológica', 'Número de Acidentes']
-
-# Gráfico de barras com o número de acidentes por condição meteorológica
-fig_condicao_meteorologica = px.bar(acidentes_por_condicao_df, x='Condição Meteorológica', y='Número de Acidentes',
-                                    labels={'Condição Meteorológica': 'Condição Meteorológica', 'Número de Acidentes': 'Número de Acidentes'},
-                                    title="Distribuição de Acidentes por Condição Meteorológica")
-st.plotly_chart(fig_condicao_meteorologica)
-
-# 5. Número total de mortos, feridos e ilesos
-st.subheader("Totais de Mortes, Feridos e Ilesos")
-
-if 'mortos' in dados.columns and 'feridos' in dados.columns and 'ilesos' in dados.columns:
-    total_mortos = dados_filtrados['mortos'].sum()
-    total_feridos = dados_filtrados['feridos'].sum()
-    total_ilesos = dados_filtrados['ilesos'].sum()
-
-    st.write(f"Mortos: {total_mortos}")
-    st.write(f"Feridos: {total_feridos}")
-    st.write(f"Ilesos: {total_ilesos}")
-else:
-    st.write("As colunas 'mortos', 'feridos' ou 'ilesos' não estão presentes nos dados.")
+if __name__ == "__main__":
+    main()
