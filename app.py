@@ -21,7 +21,7 @@ def carregar_dados():
         return pd.DataFrame()
 
 def analise_existente(dados_filtrados):
-    st.header("Análises Básicas")
+    st.header("Análises Iniciais")
     
     # Distribuição por dia da semana
     acidentes_por_dia = dados_filtrados['dia_semana'].value_counts().sort_index()
@@ -152,8 +152,10 @@ def analise_avancada(dados_filtrados):
     st.plotly_chart(fig_veiculos)
 
 def main():
-    st.title("Dashboard de Análise")
-    
+    st.title("Dashboard Temporal de Acidentes de Trânsito no Brasi dos anos 2021-2024")
+
+    st.markdown("----------------")
+
     dados = carregar_dados()
     
     # Filtros
