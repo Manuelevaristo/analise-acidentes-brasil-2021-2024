@@ -281,7 +281,7 @@ def main():
     dados = carregar_dados()
     
     if dados.empty:
-        st.warning("Nenhum dado para exibir.")
+        st.warning("Nenhum dado para exibir...")
         return
     
     # Filtros
