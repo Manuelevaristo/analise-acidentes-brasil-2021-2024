@@ -171,3 +171,14 @@ plt.show()
    pip install -r requirements.txt
    ```
 3. Execute os scripts para carregar, limpar e analisar os dados.
+
+### Execução do Aplicativo:
+
+No terminal, execute o comando
+
+```bash
+streamlit run app.py
+   ```
+Use o menu lateral para navegar entre as diferentes páginas e análises.
+
+
