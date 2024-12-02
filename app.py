@@ -1,9 +1,8 @@
 import pandas as pd
 import streamlit as st
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
-import calendar
+import random
 
 @st.cache_data
 def carregar_dados():
@@ -20,7 +19,12 @@ def carregar_dados():
         st.error(f"Erro ao carregar os dados: {e}")
         return pd.DataFrame()
 
-def analise_existente(dados_filtrados):
+def gerar_paleta_cores(uf):
+    # Define uma paleta de cores personalizada para cada UF
+    random.seed(hash(uf))
+    return random.choices(px.colors.qualitative.Dark24, k=7)
+
+def analise_existente(dados_filtrados, cores):
     st.header("Análises Iniciais")
     
     # Distribuição por dia da semana
@@ -29,7 +33,8 @@ def analise_existente(dados_filtrados):
     acidentes_por_dia_df.columns = ['Dia da Semana', 'Número de Acidentes']
     
     fig_dia_semana = px.bar(acidentes_por_dia_df, x='Dia da Semana', y='Número de Acidentes',
-                           title="Distribuição de Acidentes por Dia da Semana")
+                            title="Distribuição de Acidentes por Dia da Semana",
+                            color_discrete_sequence=[cores[0]])
     st.plotly_chart(fig_dia_semana)
     
     # Distribuição por tipo de acidente
@@ -38,7 +43,8 @@ def analise_existente(dados_filtrados):
     acidentes_por_tipo_df.columns = ['Tipo de Acidente', 'Número de Acidentes']
     
     fig_tipo_acidente = px.bar(acidentes_por_tipo_df, x='Tipo de Acidente', y='Número de Acidentes',
-                              title="Distribuição por Tipo de Acidente")
+                               title="Distribuição por Tipo de Acidente",
+                               color_discrete_sequence=[cores[1]])
     st.plotly_chart(fig_tipo_acidente)
     
     # Distribuição por causa
@@ -47,7 +53,8 @@ def analise_existente(dados_filtrados):
     acidentes_por_causa_df.columns = ['Causa do Acidente', 'Número de Acidentes']
     
     fig_causa_acidente = px.bar(acidentes_por_causa_df, x='Causa do Acidente', y='Número de Acidentes',
-                               title="Distribuição por Causa")
+                                title="Distribuição por Causa",
+                                color_discrete_sequence=[cores[2]])
     st.plotly_chart(fig_causa_acidente)
     
     # Distribuição por condição meteorológica
@@ -56,23 +63,23 @@ def analise_existente(dados_filtrados):
     acidentes_por_condicao_df.columns = ['Condição Meteorológica', 'Número de Acidentes']
     
     fig_condicao = px.bar(acidentes_por_condicao_df, x='Condição Meteorológica', y='Número de Acidentes',
-                         title="Distribuição por Condição Meteorológica")
+                          title="Distribuição por Condição Meteorológica",
+                          color_discrete_sequence=[cores[3]])
     st.plotly_chart(fig_condicao)
 
-def analise_mitigacao(dados_filtrados):
+def analise_mitigacao(dados_filtrados, cores):
     st.header("Análise para Mitigação de Acidentes")
     
     # Análise por período do dia
     dados_filtrados['hora'] = dados_filtrados['horario'].str[:2].astype(int)
     dados_filtrados['periodo'] = pd.cut(dados_filtrados['hora'],
-                                      bins=[0,6,12,18,24],
-                                      labels=['Madrugada','Manhã','Tarde','Noite'])
-    
-    acidentes_periodo = pd.crosstab(dados_filtrados['periodo'], 
-                                   dados_filtrados['classificacao_acidente'])
+                                        bins=[0, 6, 12, 18, 24],
+                                        labels=['Madrugada', 'Manhã', 'Tarde', 'Noite'])
+    acidentes_periodo = pd.crosstab(dados_filtrados['periodo'], dados_filtrados['classificacao_acidente'])
     
     fig_periodo = px.bar(acidentes_periodo, title="Acidentes por Período e Gravidade",
-                        labels={'value': 'Número de Acidentes', 'periodo': 'Período do Dia'})
+                         labels={'value': 'Número de Acidentes', 'periodo': 'Período do Dia'},
+                         color_discrete_sequence=[cores[4]])
     st.plotly_chart(fig_periodo)
     
     # Fatores de risco combinados
@@ -82,8 +89,7 @@ def analise_mitigacao(dados_filtrados):
         'mortos': 'sum',
         'feridos': 'sum'
     }).reset_index()
-    
-    risco_combinado['indice_risco'] = (risco_combinado['mortos']*3 + risco_combinado['feridos']) / risco_combinado['id']
+    risco_combinado['indice_risco'] = (risco_combinado['mortos'] * 3 + risco_combinado['feridos']) / risco_combinado['id']
     top_riscos = risco_combinado.nlargest(10, 'indice_risco')
     
     st.write("Top 10 Combinações Mais Perigosas:")
@@ -99,21 +105,20 @@ def analise_mitigacao(dados_filtrados):
         aggfunc='count',
         fill_value=0
     )
-    
-    fig_heatmap = px.imshow(heatmap_data,
-                           title="Mapa de Calor: Hora x Mês",
-                           labels=dict(x="Mês", y="Hora do Dia", color="Número de Acidentes"))
+    fig_heatmap = px.imshow(heatmap_data, title="Mapa de Calor: Hora x Mês",
+                            labels=dict(x="Mês", y="Hora do Dia", color="Número de Acidentes"),
+                            color_continuous_scale=cores)
     st.plotly_chart(fig_heatmap)
 
-def analise_avancada(dados_filtrados):
+def analise_avancada(dados_filtrados, cores):
     st.header("Análises Avançadas")
     
     # Distribuição de acidentes por BR
     acidentes_por_br = dados_filtrados['br'].value_counts().reset_index()
     acidentes_por_br.columns = ['BR', 'Número de Acidentes']
-    
     fig_br = px.bar(acidentes_por_br, x='BR', y='Número de Acidentes',
-                    title="Distribuição de Acidentes por BR")
+                    title="Distribuição de Acidentes por BR",
+                    color_discrete_sequence=[cores[5]])
     st.plotly_chart(fig_br)
     
     # Distribuição km por mortos, feridos leves, feridos graves, ilesos
@@ -123,46 +128,23 @@ def analise_avancada(dados_filtrados):
         'feridos_graves': 'sum',
         'ilesos': 'sum'
     }).reset_index()
-    
     fig_km = px.line(ferimentos_por_km, x='km', y=['mortos', 'feridos_leves', 'feridos_graves', 'ilesos'],
                      title="Distribuição de Ferimentos por KM",
-                     labels={'value': 'Número de Pessoas', 'variable': 'Tipo de Ocorrência'})
+                     labels={'value': 'Número de Pessoas', 'variable': 'Tipo de Ocorrência'},
+                     color_discrete_sequence=cores)
     st.plotly_chart(fig_km)
-    
-    # Distribuição delegacia por número de acidentes
-    acidentes_por_delegacia = dados_filtrados['delegacia'].value_counts().reset_index()
-    acidentes_por_delegacia.columns = ['Delegacia', 'Número de Acidentes']
-    
-    fig_delegacia = px.bar(acidentes_por_delegacia, x='Delegacia', y='Número de Acidentes',
-                           title="Distribuição de Acidentes por Delegacia")
-    st.plotly_chart(fig_delegacia)
-    
-    # Distribuição município por número de acidentes
-    acidentes_por_municipio = dados_filtrados['municipio'].value_counts().reset_index()
-    acidentes_por_municipio.columns = ['Município', 'Número de Acidentes']
-    
-    fig_municipio = px.bar(acidentes_por_municipio, x='Município', y='Número de Acidentes',
-                           title="Distribuição de Acidentes por Município")
-    st.plotly_chart(fig_municipio)
-    
-    # Distribuição veículos por número de acidentes
-    acidentes_por_veiculos = dados_filtrados.groupby('veiculos').size().reset_index(name='Número de Acidentes')
-    fig_veiculos = px.scatter(acidentes_por_veiculos, x='veiculos', y='Número de Acidentes',
-                               title="Distribuição de Veículos por Número de Acidentes")
-    st.plotly_chart(fig_veiculos)
 
 def main():
-    st.title("Dashboard Temporal de Acidentes de Trânsito no Brasi dos anos 2021-2024")
-
-    st.markdown("----------------")
-
+    st.title("Dashboard Temporal de Acidentes de Trânsito no Brasil (2021-2024)")
+    st.markdown("---")
     dados = carregar_dados()
     
     # Filtros
     st.sidebar.title("Filtros")
     uf_selecionada = st.sidebar.selectbox('Estado (UF)', dados['uf'].unique())
     
-    # Aplicar filtros
+    # Aplicar filtros e definir cores
+    cores = gerar_paleta_cores(uf_selecionada)
     dados_filtrados = dados[dados['uf'] == uf_selecionada]
     
     # Métricas principais
@@ -176,10 +158,10 @@ def main():
     with col4:
         st.metric("Total de Feridos Graves", dados_filtrados['feridos_graves'].sum())
     
-    # Chamar análises
-    analise_existente(dados_filtrados)
-    analise_mitigacao(dados_filtrados)
-    analise_avancada(dados_filtrados)
+    # Chamadas das funções de análise
+    analise_existente(dados_filtrados, cores)
+    analise_mitigacao(dados_filtrados, cores)
+    analise_avancada(dados_filtrados, cores)
 
 if __name__ == "__main__":
     main()
